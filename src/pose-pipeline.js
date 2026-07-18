@@ -32,6 +32,10 @@ export class PosePipeline {
   constructor(camera) {
     this.camera = camera;
     this.camZ = camera.position.z;
+    // Ajuste fino en vivo (sliders): desplazamiento vertical como fraccion del
+    // torso y multiplicador de escala. Permite calibrar sobre un cuerpo real
+    // sin recompilar ni adivinar valores.
+    this.calib = { offsetT: 0, scale: 1 };
   }
 
   // Des-proyecta un punto NDC a un plano de profundidad fija en el mundo.
@@ -68,8 +72,10 @@ export class PosePipeline {
     shoulderAxisNdc.x /= axisLen;
     shoulderAxisNdc.y /= axisLen;
 
+    const shoulderMid0 = wLS.clone().add(wRS).multiplyScalar(0.5);
+
     // Caderas: si no son visibles (persona cerca), se estiman por proporcion.
-    let hipMidNdc, torsoHeight0;
+    let hipMidNdc, torsoHeight0, hipMid0;
     const hipsVisible =
       lh && rh &&
       (lh.visibility ?? 1) > HIP_VISIBILITY_THRESHOLD &&
@@ -81,8 +87,7 @@ export class PosePipeline {
       hipMidNdc = { x: (nLH.x + nRH.x) / 2, y: (nLH.y + nRH.y) / 2 };
       const wLH = this.unprojectToDepth(nLH.x, nLH.y, 0);
       const wRH = this.unprojectToDepth(nRH.x, nRH.y, 0);
-      const shoulderMid0 = wLS.clone().add(wRS).multiplyScalar(0.5);
-      const hipMid0 = wLH.clone().add(wRH).multiplyScalar(0.5);
+      hipMid0 = wLH.clone().add(wRH).multiplyScalar(0.5);
       torsoHeight0 = shoulderMid0.distanceTo(hipMid0);
     } else {
       // Estima cadera hacia "abajo" en el eje perpendicular al de hombros.
@@ -93,9 +98,18 @@ export class PosePipeline {
       const drop = shoulderWidthNdc * FALLBACK_TORSO_RATIO;
       hipMidNdc = { x: shoulderMidNdc.x + down.x * drop, y: shoulderMidNdc.y + down.y * drop };
       torsoHeight0 = shoulderWidth0 * FALLBACK_TORSO_RATIO;
+      hipMid0 = this.unprojectToDepth(hipMidNdc.x, hipMidNdc.y, 0);
     }
 
-    const rotationZ = normalizeLineAngle(Math.atan2(wRS.y - wLS.y, wRS.x - wLS.x));
+    // La rotacion sale del EJE DEL TORSO (hombros->caderas), no de la linea de
+    // hombros. Con una persona acostada en diagonal, la linea de hombros puede
+    // verse horizontal mientras el cuerpo esta inclinado: usar los hombros
+    // dejaba los organos verticales sobre un cuerpo tumbado.
+    // Se busca el angulo que alinea el "abajo" del modelo (0,-1) con el eje.
+    const torsoVec = hipMid0.clone().sub(shoulderMid0);
+    const tlen = torsoVec.length() || 1;
+    const tx = torsoVec.x / tlen, ty = torsoVec.y / tlen;
+    const rotationZ = Math.atan2(tx, -ty);
 
     return {
       shoulderMidNdc,
@@ -119,7 +133,7 @@ export class PosePipeline {
       ndcX = frame.noseNdc.x;
       ndcY = frame.noseNdc.y + (cfg.headOffsetY || 0) * frame.shoulderWidthNdc;
     } else {
-      const t = cfg.anchorT;
+      const t = cfg.anchorT + this.calib.offsetT;
       ndcX = frame.shoulderMidNdc.x + (frame.hipMidNdc.x - frame.shoulderMidNdc.x) * t;
       ndcY = frame.shoulderMidNdc.y + (frame.hipMidNdc.y - frame.shoulderMidNdc.y) * t;
     }
@@ -140,7 +154,7 @@ export class PosePipeline {
     const depthFactor = (this.camZ - depth) / this.camZ;
     const base = cfg.sizeRef === "torsoHeight" ? frame.torsoHeight0 : frame.shoulderWidth0;
     const refWorld = base * depthFactor;
-    const scale = (refWorld * cfg.ratio) / (nativeSize || 0.001);
+    const scale = (refWorld * cfg.ratio * this.calib.scale) / (nativeSize || 0.001);
 
     return { position, scale, rotationZ: frame.rotationZ };
   }

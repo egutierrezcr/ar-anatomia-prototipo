@@ -1,8 +1,12 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PoseLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
-import { ORGANS, SYSTEMS, DEFAULT_ACTIVE_SYSTEMS, AUTHORED_TEST_LANDMARKS } from "./config.js";
-import { PosePipeline, lerpAngle } from "./pose-pipeline.js";
+// Los modulos propios se importan con la misma version que main.js para que
+// el cache del navegador no sirva una mezcla de codigo viejo y nuevo.
+const _v = new URL(import.meta.url).searchParams.get("v");
+const _q = _v ? "?v=" + _v : "";
+const { ORGANS, SYSTEMS, DEFAULT_ACTIVE_SYSTEMS, AUTHORED_TEST_LANDMARKS } = await import("./config.js" + _q);
+const { PosePipeline, lerpAngle } = await import("./pose-pipeline.js" + _q);
 
 const POSE_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
@@ -261,6 +265,20 @@ async function setSystemActive(sys, active) {
 // ---------- UI ----------
 function buildChips() {
   chipsEl.innerHTML = "";
+
+  // Atajo para prender/apagar todo: los sistemas apagados eran la razon por la
+  // que "faltaban" organos, no que no existieran.
+  const todos = document.createElement("div");
+  todos.className = "chip";
+  todos.textContent = "Todos";
+  todos.addEventListener("click", async () => {
+    const encender = Object.keys(SYSTEMS).some((s) => !activeSystems.has(s));
+    todos.textContent = encender ? "Ninguno" : "Todos";
+    for (const s of Object.keys(SYSTEMS)) await setSystemActive(s, encender);
+    buildChips();
+  });
+  chipsEl.appendChild(todos);
+
   Object.entries(SYSTEMS).forEach(([sys, meta]) => {
     const chip = document.createElement("div");
     chip.className = "chip" + (activeSystems.has(sys) ? " active" : "");
@@ -279,6 +297,23 @@ opacityInput.addEventListener("input", () => {
   globalOpacity = Number(opacityInput.value) / 100;
   opacityVal.textContent = opacityInput.value + "%";
   Object.keys(organObjects).forEach(applyOpacity);
+});
+
+// Calibracion en vivo sobre un cuerpo real: mover verticalmente y escalar.
+const calibY = document.getElementById("calib-y");
+const calibYVal = document.getElementById("calib-y-val");
+const calibS = document.getElementById("calib-s");
+const calibSVal = document.getElementById("calib-s-val");
+
+calibY.addEventListener("input", () => {
+  const v = Number(calibY.value);
+  calibYVal.textContent = String(v);
+  if (pipeline) pipeline.calib.offsetT = v / 100; // -0.40 .. +0.40 del torso
+});
+calibS.addEventListener("input", () => {
+  const v = Number(calibS.value);
+  calibSVal.textContent = v + "%";
+  if (pipeline) pipeline.calib.scale = v / 100;
 });
 
 backBtn.addEventListener("click", () => location.reload());
@@ -493,9 +528,27 @@ async function runWebXRMode() {
   setStatus("cargando anatomia");
   await preloadActiveSystems();
   xrRig = buildAnatomyRig();
-  xrRig.visible = true;
-  xrRig.position.set(0, 0, -1.2); // frente a la camara hasta que se coloque
+  // OCULTO hasta entrar a la sesion AR: el passthrough de camara solo existe
+  // dentro de la sesion, asi que dibujarlo antes daba una pantalla negra con
+  // organos flotando (que es justo lo que se veia mal).
+  xrRig.visible = false;
+  xrRig.position.set(0, 0, -1.2);
   scene.add(xrRig);
+
+  const intro = document.createElement("div");
+  intro.className = "overlay";
+  intro.style.background = "rgba(10,10,10,0.92)";
+  intro.innerHTML =
+    '<h1>Listo para AR</h1>' +
+    '<p>Al entrar, se abre la camara a pantalla completa. Apunta al piso o a la ' +
+    'camilla cerca de la persona hasta ver el circulo verde, y toca para colocar ' +
+    'la anatomia. Despues podes caminar alrededor.</p>';
+  const go = document.createElement("button");
+  go.className = "mode-btn";
+  go.textContent = "Entrar en AR";
+  go.addEventListener("click", () => { intro.remove(); xrBtn.click(); });
+  intro.appendChild(go);
+  document.getElementById("stage").appendChild(intro);
 
   // reticulo para hit-test
   const reticle = new THREE.Mesh(
@@ -518,6 +571,7 @@ async function runWebXRMode() {
       });
       renderer.xr.setReferenceSpaceType("local");
       await renderer.xr.setSession(session);
+      xrRig.visible = true; // ya hay passthrough de camara detras
       setStatus("busca una superficie y toca para colocar");
 
       const viewerSpace = await session.requestReferenceSpace("viewer");
@@ -609,6 +663,12 @@ function startMode(mode) {
       renderer.render(scene, camera);
       return this.state();
     },
+    organPos(name) {
+      const e = organObjects[name];
+      if (!e || !e.loaded) return null;
+      return { x: +e.group.position.x.toFixed(4), y: +e.group.position.y.toFixed(4),
+               s: +e.group.scale.x.toFixed(5), rot: +e.group.rotation.z.toFixed(4) };
+    },
     state() {
       const loaded = [], failed = [], visible = [];
       for (const [k, e] of Object.entries(organObjects)) {
@@ -616,7 +676,8 @@ function startMode(mode) {
         if (e.failed) failed.push(k);
         if (e.loaded && e.group.visible) visible.push(k);
       }
-      return { loaded, failed, visible, hasLandmarks: !!lastLandmarks };
+      return { loaded, failed, visible, hasLandmarks: !!lastLandmarks,
+               calib: pipeline ? { ...pipeline.calib } : null };
     },
     setSystemActive,
   };

@@ -21,15 +21,21 @@
   #hud b { color: var(--accent); }
   #hud .warn { color: #f0a060; }
 
-  #controls { position: absolute; bottom: 14px; left: 12px; right: 12px; z-index: 4;
-    display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-  #chips { display: flex; gap: 6px; flex-wrap: wrap; }
-  .chip { background: rgba(20,20,20,0.82); color: var(--fg); border: 1px solid var(--line);
-    border-radius: 999px; padding: 7px 13px; font-size: 12px; cursor: pointer; user-select: none; }
+  #controls { position: absolute; bottom: 10px; left: 8px; right: 8px; z-index: 4;
+    display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+    max-height: 46vh; overflow-y: auto; }
+  #chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .chip { background: rgba(20,20,20,0.88); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 999px; padding: 8px 13px; font-size: 12px; cursor: pointer; user-select: none;
+    -webkit-tap-highlight-color: transparent; }
   .chip.active { border-color: var(--accent); color: var(--accent); background: rgba(126,231,135,0.12); }
-  #opacity-row { display: flex; align-items: center; gap: 8px; font-size: 12px;
-    background: rgba(10,10,10,0.6); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); }
-  input[type=range] { width: 160px; }
+  #tune { background: rgba(10,10,10,0.72); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; font-size: 11px; }
+  #tune .row { display: flex; align-items: center; gap: 8px; }
+  #tune .row span:first-child { min-width: 58px; }
+  #tune .row span:last-child { min-width: 38px; text-align: right; color: #9fb; }
+  input[type=range] { flex: 1; min-width: 0; }
+  #xr-btn { align-self: flex-start; padding: 11px 18px; font-size: 13px; }
 
   .overlay { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 16px; background: #0a0a0a; text-align: center; padding: 24px; }
@@ -63,14 +69,18 @@
     <button id="back-btn">Cambiar modo</button>
 
     <div id="controls" style="display:none">
+      <button id="xr-btn" class="chip">Colocar en AR</button>
       <div id="chips"></div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <div id="opacity-row">
-          <span>Opacidad</span>
+      <div id="tune">
+        <div class="row"><span>Opacidad</span>
           <input id="opacity" type="range" min="0" max="100" value="100" />
-          <span id="opacity-val">100%</span>
-        </div>
-        <button id="xr-btn" class="chip">Colocar en AR</button>
+          <span id="opacity-val">100%</span></div>
+        <div class="row"><span>Altura</span>
+          <input id="calib-y" type="range" min="-40" max="40" value="0" />
+          <span id="calib-y-val">0</span></div>
+        <div class="row"><span>Tamano</span>
+          <input id="calib-s" type="range" min="50" max="200" value="100" />
+          <span id="calib-s-val">100%</span></div>
       </div>
     </div>
 
@@ -157,6 +167,13 @@
     }
   }
   </script>
-  <script type="module" src="./src/main.js"></script>
+  <!-- Cache-busting: el navegador (y GitHub Pages) cachean los modulos, asi que
+       al iterar se corria codigo viejo sin darse cuenta. La version se propaga
+       a los modulos hijos dentro de main.js. -->
+  <script type="module">
+    import("./src/main.js?v=" + Date.now()).catch(function (e) {
+      if (window.__showFatal) window.__showFatal(e.message, "No se pudo cargar el modulo principal.");
+    });
+  </script>
 </body>
 </html>

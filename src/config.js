@@ -33,11 +33,11 @@ export const ORGANS = {
   skin:            { file: "./assets/organs/VH_M_Skin.glb",              system: "piel",           anchorT: 0.50, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: 0.34 },
 
   // respiratorio
-  lung:            { file: "./assets/organs/VH_M_Lung.glb",              system: "respiratorio",   anchorT: 0.18, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.95, depth: 0.10 },
+  lung:            { file: "./assets/organs/VH_M_Lung.glb",              system: "respiratorio",   anchorT: 0.26, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.95, depth: 0.10 },
 
   // cardiovascular
-  heart:           { file: "./assets/organs/VH_M_Heart.glb",            system: "cardiovascular", anchorT: 0.24, lateral: -0.05, sizeRef: "shoulderWidth", ratio: 0.40, depth: 0.16 },
-  vasculature:     { file: "./assets/organs/VH_M_Blood_Vasculature.glb", system: "cardiovascular", anchorT: 0.38, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.10, depth: 0.06 },
+  heart:           { file: "./assets/organs/VH_M_Heart.glb",            system: "cardiovascular", anchorT: 0.32, lateral: -0.05, sizeRef: "shoulderWidth", ratio: 0.40, depth: 0.16 },
+  vasculature:     { file: "./assets/organs/VH_M_Blood_Vasculature.glb", system: "cardiovascular", anchorT: 0.45, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.10, depth: 0.06 },
 
   // digestivo
   liver:           { file: "./assets/organs/VH_M_Liver.glb",             system: "digestivo",      anchorT: 0.48, lateral: -0.12, sizeRef: "shoulderWidth", ratio: 0.62, depth: 0.12 },
@@ -56,11 +56,11 @@ export const ORGANS = {
 
   // nervioso
   brain:           { file: "./assets/organs/Allen_M_Brain.glb",          system: "nervioso",       anchorTo: "head", headOffsetY: 0.40, anchorT: -0.58, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.5, depth: 0.10 },
-  spinal_cord:     { file: "./assets/organs/VH_M_Spinal_Cord.glb",       system: "nervioso",       anchorT: 0.45, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: -0.22 },
+  spinal_cord:     { file: "./assets/organs/VH_M_Spinal_Cord.glb",       system: "nervioso",       anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: -0.22 },
 
   // esqueleto (capa mas profunda)
-  vertebrae:       { file: "./assets/organs/VH_M_Vertebrae.glb",         system: "esqueleto",      anchorT: 0.48, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.15, depth: -0.30 },
-  pelvis:          { file: "./assets/organs/VH_M_Pelvis.glb",            system: "esqueleto",      anchorT: 0.85, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.78, depth: -0.24 },
+  vertebrae:       { file: "./assets/organs/VH_M_Vertebrae.glb",         system: "esqueleto",      anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.15, depth: -0.30 },
+  pelvis:          { file: "./assets/organs/VH_M_Pelvis.glb",            system: "esqueleto",      anchorT: 0.95, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.78, depth: -0.24 },
 };
 
 // Sistemas activos al iniciar (buena vista tipo "rayos X" sin saturar).
