@@ -119,8 +119,11 @@
     window.__showFatal = showFatal;
 
     // Delegacion de eventos: funciona apenas existe el HTML, sin esperar modulos.
+    // OJO: exige [data-mode]. Otros botones reusan la clase .mode-btn por
+    // estilo (ej. "Entrar en AR"); sin este filtro se los tragaba esta
+    // delegacion y reiniciaban el modo en vez de hacer lo suyo.
     document.addEventListener("click", function (e) {
-      var btn = e.target.closest ? e.target.closest(".mode-btn") : null;
+      var btn = e.target.closest ? e.target.closest(".mode-btn[data-mode]") : null;
       if (!btn) return;
       var mode = btn.dataset.mode;
       if (window.__startMode) { window.__startMode(mode); return; }

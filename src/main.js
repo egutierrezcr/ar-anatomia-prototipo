@@ -548,22 +548,7 @@ async function runWebXRMode() {
   xrRig.position.set(0, 0, -1.2);
   scene.add(xrRig);
 
-  const intro = document.createElement("div");
-  intro.className = "overlay";
-  intro.style.background = "rgba(10,10,10,0.92)";
-  intro.innerHTML =
-    '<h1>Listo para AR</h1>' +
-    '<p>Al entrar, se abre la camara a pantalla completa. Apunta al piso o a la ' +
-    'camilla cerca de la persona hasta ver el circulo verde, y toca para colocar ' +
-    'la anatomia. Despues podes caminar alrededor.</p>';
-  const go = document.createElement("button");
-  go.className = "mode-btn";
-  go.textContent = "Entrar en AR";
-  go.addEventListener("click", () => { intro.remove(); xrBtn.click(); });
-  intro.appendChild(go);
-  document.getElementById("stage").appendChild(intro);
-
-  // reticulo para hit-test
+  // reticulo para hit-test (se crea antes: enterXrSession lo necesita)
   const reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.06, 0.08, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0x7ee787 })
@@ -572,14 +557,18 @@ async function runWebXRMode() {
   reticle.matrixAutoUpdate = false;
   scene.add(reticle);
 
-  let hitTestSource = null, localSpace = null;
+  let hitTestSource = null;
+  let entrando = false;
 
-  xrBtn.addEventListener("click", async () => {
-    if (!supported) return;
+  // requestSession EXIGE un gesto de usuario reciente. Por eso se llama
+  // directo desde el handler del boton y no encadenando un click sintetico.
+  async function enterXrSession(onError) {
+    if (entrando) return;
+    entrando = true;
     try {
       const session = await navigator.xr.requestSession("immersive-ar", {
-        requiredFeatures: ["hit-test", "local"],
-        optionalFeatures: ["dom-overlay"],
+        requiredFeatures: ["hit-test"],
+        optionalFeatures: ["dom-overlay", "local-floor"],
         domOverlay: { root: document.body },
       });
       renderer.xr.setReferenceSpaceType("local");
@@ -589,7 +578,6 @@ async function runWebXRMode() {
 
       const viewerSpace = await session.requestReferenceSpace("viewer");
       hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-      localSpace = await session.requestReferenceSpace("local");
 
       session.addEventListener("select", () => {
         if (reticle.visible) {
@@ -599,12 +587,47 @@ async function runWebXRMode() {
           setStatus("colocado - camina alrededor");
         }
       });
-      session.addEventListener("end", () => { hitTestSource = null; });
+      session.addEventListener("end", () => {
+        hitTestSource = null; xrRig.visible = false; entrando = false;
+        setStatus("sesion AR terminada");
+      });
+      return true;
     } catch (e) {
-      setStatus("no se pudo iniciar AR: " + e.message);
+      entrando = false;
       console.error(e);
+      setStatus("no se pudo iniciar AR");
+      if (onError) onError(e);
+      return false;
     }
+  }
+
+  const intro = document.createElement("div");
+  intro.className = "overlay";
+  intro.style.background = "rgba(10,10,10,0.92)";
+  intro.innerHTML =
+    '<h1>Listo para AR</h1>' +
+    '<p>Al entrar, se abre la camara a pantalla completa. Apunta al piso o a la ' +
+    'camilla cerca de la persona hasta ver el circulo verde, y toca para colocar ' +
+    'la anatomia. Despues podes caminar alrededor.</p>';
+  const err = document.createElement("p");
+  err.style.color = "#f0a060";
+  intro.appendChild(err);
+
+  const go = document.createElement("button");
+  go.className = "xr-enter-btn mode-btn";   // sin data-mode: no es cambio de modo
+  go.textContent = "Entrar en AR";
+  go.addEventListener("click", async () => {
+    err.textContent = "Abriendo AR...";
+    const ok = await enterXrSession((e) => {
+      err.textContent = "Fallo: " + (e && e.message ? e.message : e) +
+        ". Revisa que tengas Google Play Services for AR (ARCore) instalado y actualizado.";
+    });
+    if (ok) intro.remove();
   });
+  intro.appendChild(go);
+  document.getElementById("stage").appendChild(intro);
+
+  xrBtn.addEventListener("click", () => { enterXrSession(); });
 
   renderer.setAnimationLoop((_, frame) => {
     if (frame && hitTestSource) {
@@ -654,6 +677,9 @@ async function preloadActiveSystems() {
 
 // ---------- arranque ----------
 function startMode(mode) {
+  // Guarda: reiniciar un modo ya activo creaba un segundo renderer/escena y
+  // dejaba la pantalla congelada (paso al tocar "Entrar en AR").
+  if (currentMode) { console.warn("modo ya iniciado:", currentMode); return; }
   currentMode = mode;
   startOverlay.remove();
   controlsEl.style.display = "flex";
