@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Anatomia aumentada - prototipo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<style>
+  :root { --bg: #0a0a0a; --fg: #e8e8e8; --accent: #7ee787; --line: rgba(255,255,255,0.15); }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font-family: Inter, system-ui, sans-serif; overflow: hidden; height: 100%; }
+  #stage { position: relative; width: 100vw; height: 100vh; }
+  video, #test-img, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  video { object-fit: cover; z-index: 1; }
+  #test-img { object-fit: contain; z-index: 1; display: none; }
+  canvas { z-index: 2; }
+
+  #hud { position: absolute; top: 12px; left: 12px; z-index: 3;
+    background: rgba(10,10,10,0.65); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 14px; font-size: 12px; line-height: 1.6; min-width: 200px; }
+  #hud b { color: var(--accent); }
+  #hud .warn { color: #f0a060; }
+
+  #controls { position: absolute; bottom: 14px; left: 12px; right: 12px; z-index: 3;
+    display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  #chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: rgba(20,20,20,0.82); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 13px; font-size: 12px; cursor: pointer; user-select: none; }
+  .chip.active { border-color: var(--accent); color: var(--accent); background: rgba(126,231,135,0.12); }
+  #opacity-row { display: flex; align-items: center; gap: 8px; font-size: 12px;
+    background: rgba(10,10,10,0.6); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); }
+  input[type=range] { width: 160px; }
+
+  .overlay { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; background: #0a0a0a; text-align: center; padding: 24px; }
+  .overlay h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  .overlay p { font-size: 13px; color: #aaa; max-width: 460px; margin: 0; line-height: 1.5; }
+  .mode-btn { background: #16181d; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 22px; font-size: 15px; cursor: pointer; width: 320px; max-width: 90vw; }
+  .mode-btn:hover { border-color: var(--accent); }
+  .mode-btn small { display: block; color: #888; font-size: 11px; margin-top: 4px; font-weight: 400; }
+  .mode-btn.disabled { opacity: 0.45; cursor: not-allowed; }
+  #back-btn { position: absolute; top: 12px; right: 12px; z-index: 4; display: none;
+    background: rgba(20,20,20,0.82); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 12px; font-size: 12px; cursor: pointer; }
+  #xr-btn { display: none; background: rgba(126,231,135,0.14); border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <img id="test-img" alt="figura de prueba" />
+    <canvas id="canvas"></canvas>
+
+    <div id="hud">
+      <div>Modo: <b id="mode-name">-</b></div>
+      <div>Estado: <b id="status">-</b></div>
+      <div>FPS: <span id="fps">-</span> · Landmarks: <span id="landmark-count">-</span></div>
+      <div class="warn">Prototipo educativo, sin uso clinico</div>
+    </div>
+
+    <button id="back-btn">Cambiar modo</button>
+
+    <div id="controls" style="display:none">
+      <div id="chips"></div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div id="opacity-row">
+          <span>Opacidad</span>
+          <input id="opacity" type="range" min="0" max="100" value="100" />
+          <span id="opacity-val">100%</span>
+        </div>
+        <button id="xr-btn" class="chip">Colocar en AR</button>
+      </div>
+    </div>
+
+    <div id="start-overlay" class="overlay">
+      <h1>Anatomia aumentada</h1>
+      <p>Superpone modelos anatomicos 3D reales (HuBMAP/NIH) sobre una persona.
+         Elegi como probarlo.</p>
+      <button class="mode-btn" data-mode="camera">Camara fija
+        <small>La persona o la camara quietas. Los organos siguen al cuerpo (MediaPipe). Funciona en cualquier navegador.</small></button>
+      <button class="mode-btn" data-mode="webxr">Caminar alrededor (AR)
+        <small>Ancla los organos en el espacio real para rodear a la persona y ver el otro lado. Requiere Android con WebXR.</small></button>
+      <button class="mode-btn" data-mode="test">Imagen de prueba
+        <small>Usa una figura ficticia, sin camara. Para ver la visualizacion de organos en capas.</small></button>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+      "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
+    }
+  }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

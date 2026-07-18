@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000" width="600" height="1000">
+  <!-- Figura ficticia acostada (vista cenital, como camara de telefono sobre
+       una persona en camilla). No representa a ninguna persona real.
+       Mismos landmarks que figura-parada (cabeza arriba, pies abajo). -->
+  <defs>
+    <linearGradient id="skin2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d9a07e"/>
+      <stop offset="0.5" stop-color="#e8b89a"/>
+      <stop offset="1" stop-color="#d29677"/>
+    </linearGradient>
+  </defs>
+
+  <!-- piso / sala -->
+  <rect width="600" height="1000" fill="#3a4048"/>
+  <rect x="0" y="0" width="600" height="1000" fill="#2f343b"/>
+  <!-- camilla -->
+  <rect x="120" y="40" width="360" height="920" rx="30" fill="#c9d3dc"/>
+  <rect x="120" y="40" width="360" height="920" rx="30" fill="none" stroke="#9aa6b2" stroke-width="4"/>
+  <!-- sabana -->
+  <rect x="140" y="620" width="320" height="340" rx="12" fill="#eef3f7" opacity="0.85"/>
+
+  <!-- piernas -->
+  <path d="M245 560 L232 900 Q232 925 262 925 Q288 925 288 900 L296 620 L304 900 Q304 925 330 925 Q360 925 360 900 L355 560 Z" fill="url(#skin2)"/>
+  <!-- brazos -->
+  <path d="M205 300 Q150 320 150 430 L165 590 Q165 612 188 612 Q208 612 206 590 L210 430 Q214 360 235 335 Z" fill="url(#skin2)"/>
+  <path d="M395 300 Q450 320 450 430 L435 590 Q435 612 412 612 Q392 612 394 590 L390 430 Q386 360 365 335 Z" fill="url(#skin2)"/>
+  <!-- torso -->
+  <path d="M200 300 Q210 285 240 282 L300 278 L360 282 Q390 285 400 300 L380 470 Q372 545 355 580 L300 590 L245 580 Q228 545 220 470 Z" fill="url(#skin2)"/>
+  <!-- cuello -->
+  <rect x="278" y="205" width="44" height="70" rx="18" fill="url(#skin2)"/>
+  <!-- cabeza -->
+  <ellipse cx="300" cy="120" rx="62" ry="74" fill="url(#skin2)"/>
+</svg>

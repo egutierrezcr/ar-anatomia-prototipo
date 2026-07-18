@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000" width="600" height="1000">
+  <!-- Figura humana ficticia (ilustracion) para probar overlay de organos.
+       No representa a ninguna persona real. Landmarks conocidos en JS. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1f2b"/>
+      <stop offset="1" stop-color="#0c0e14"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d9a07e"/>
+      <stop offset="0.5" stop-color="#e8b89a"/>
+      <stop offset="1" stop-color="#d29677"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="600" height="1000" fill="url(#bg)"/>
+
+  <!-- piernas -->
+  <path d="M245 560 L232 940 Q232 965 262 965 Q288 965 288 940 L296 620 L304 940 Q304 965 330 965 Q360 965 360 940 L355 560 Z" fill="url(#skin)"/>
+  <!-- brazos -->
+  <path d="M205 300 Q150 320 150 430 L165 610 Q165 632 188 632 Q208 632 206 610 L210 430 Q214 360 235 335 Z" fill="url(#skin)"/>
+  <path d="M395 300 Q450 320 450 430 L435 610 Q435 632 412 632 Q392 632 394 610 L390 430 Q386 360 365 335 Z" fill="url(#skin)"/>
+  <!-- torso -->
+  <path d="M200 300 Q210 285 240 282 L300 278 L360 282 Q390 285 400 300 L380 470 Q372 545 355 580 L300 590 L245 580 Q228 545 220 470 Z" fill="url(#skin)"/>
+  <!-- cuello -->
+  <rect x="278" y="205" width="44" height="70" rx="18" fill="url(#skin)"/>
+  <!-- cabeza -->
+  <ellipse cx="300" cy="120" rx="62" ry="74" fill="url(#skin)"/>
+
+  <!-- guias de landmarks (sutiles) -->
+  <g fill="#00e5ff" opacity="0.0">
+    <circle cx="400" cy="300" r="6"/><circle cx="200" cy="300" r="6"/>
+    <circle cx="355" cy="580" r="6"/><circle cx="245" cy="580" r="6"/>
+  </g>
+</svg>
