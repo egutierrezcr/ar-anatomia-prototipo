@@ -46,9 +46,54 @@ export class PosePipeline {
     return this.camera.position.clone().add(dir.multiplyScalar(distance));
   }
 
+  // Conversion worldLandmarks (metros, origen entre caderas) -> espacio Three.
+  // Medido empiricamente, NO asumido: con una persona de frente, el hombro
+  // izquierdo de la persona da x NEGATIVO y los hombros dan y NEGATIVO
+  // respecto de las caderas. O sea: +x apunta a la derecha anatomica (que en
+  // pantalla se ve a la izquierda) y +y apunta hacia abajo.
+  // Three usa +x a la derecha de pantalla y +y arriba, de ahi los dos signos.
+  static toThreeSpace(lm) {
+    return new THREE.Vector3(-lm.x, -lm.y, -lm.z);
+  }
+
+  // Orientacion 3D REAL del torso a partir de worldLandmarks. Esto capta el
+  // giro sobre el eje vertical y la inclinacion hacia/desde la camara, que la
+  // rotacion plana en pantalla no puede representar.
+  // Devuelve null si no hay datos 3D utilizables.
+  computeTorsoQuaternion(worldLandmarks) {
+    if (!worldLandmarks || worldLandmarks.length < 25) return null;
+    const wl = worldLandmarks;
+    const ls = wl[LM.LEFT_SHOULDER], rs = wl[LM.RIGHT_SHOULDER];
+    const lh = wl[LM.LEFT_HIP], rh = wl[LM.RIGHT_HIP];
+    if (!ls || !rs || !lh || !rh) return null;
+
+    const T = PosePipeline.toThreeSpace;
+    const vLS = T(ls), vRS = T(rs), vLH = T(lh), vRH = T(rh);
+
+    const shoulderMid = vLS.clone().add(vRS).multiplyScalar(0.5);
+    const hipMid = vLH.clone().add(vRH).multiplyScalar(0.5);
+
+    // Eje Y del cuerpo: de caderas hacia hombros.
+    const yAxis = shoulderMid.clone().sub(hipMid);
+    if (yAxis.lengthSq() < 1e-8) return null;
+    yAxis.normalize();
+
+    // Eje X del cuerpo: del hombro derecho al izquierdo de la persona.
+    // Se ortogonaliza contra Y (Gram-Schmidt) para tener una base limpia.
+    const lateral = vLS.clone().sub(vRS);
+    const xAxis = lateral.sub(yAxis.clone().multiplyScalar(lateral.dot(yAxis)));
+    if (xAxis.lengthSq() < 1e-8) return null;
+    xAxis.normalize();
+
+    const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis);
+
+    const m = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+    return new THREE.Quaternion().setFromRotationMatrix(m);
+  }
+
   // Construye el marco de torso a partir de los 33 landmarks.
   // Devuelve null si faltan hombros.
-  computeTorsoFrame(landmarks) {
+  computeTorsoFrame(landmarks, worldLandmarks) {
     const ls = landmarks[LM.LEFT_SHOULDER];
     const rs = landmarks[LM.RIGHT_SHOULDER];
     const lh = landmarks[LM.LEFT_HIP];
@@ -111,9 +156,13 @@ export class PosePipeline {
     const tx = torsoVec.x / tlen, ty = torsoVec.y / tlen;
     const rotationZ = Math.atan2(tx, -ty);
 
+    // Orientacion 3D real (si hay worldLandmarks). Si no, se usa rotationZ.
+    const quaternion = this.computeTorsoQuaternion(worldLandmarks);
+
     return {
       shoulderMidNdc,
       hipMidNdc,
+      quaternion,           // orientacion 3D del torso (puede ser null)
       noseNdc,              // landmark de nariz en NDC (para organos de cabeza)
       shoulderAxisNdc,      // direccion unitaria del eje de hombros en NDC
       shoulderWidthNdc: axisLen, // ancho de hombros en NDC (sin normalizar)
@@ -156,6 +205,6 @@ export class PosePipeline {
     const refWorld = base * depthFactor;
     const scale = (refWorld * cfg.ratio * this.calib.scale) / (nativeSize || 0.001);
 
-    return { position, scale, rotationZ: frame.rotationZ };
+    return { position, scale, rotationZ: frame.rotationZ, quaternion: frame.quaternion };
   }
 }

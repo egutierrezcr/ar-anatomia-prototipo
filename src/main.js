@@ -43,7 +43,8 @@ let globalOpacity = 1;
 let currentMode = null;
 let mediaEl = null;   // <video> o <img> activo
 let mediaFit = "cover"; // "cover" (camara) | "contain" (imagen)
-let lastLandmarks = null; // ultimos landmarks aplicados (para debug/paso manual)
+let lastLandmarks = null;      // ultimos landmarks 2D aplicados
+let lastWorldLandmarks = null; // ultimos landmarks 3D (metros) para orientacion
 
 function setStatus(s) { statusEl.textContent = s; }
 
@@ -221,7 +222,8 @@ async function ensureOrganLoaded(name) {
     entry.group = group;
     entry.materials = materials;
     entry.nativeSize = (cfg.sizeRef === "torsoHeight" ? size.y : size.x) || 0.001;
-    entry.smoothed = { position: new THREE.Vector3(), scale: 0.001, rotationZ: 0, ready: false };
+    entry.smoothed = { position: new THREE.Vector3(), scale: 0.001, rotationZ: 0,
+                       quaternion: new THREE.Quaternion(), ready: false };
     entry.loaded = true;
     applyOpacity(name);
   })().catch((e) => {
@@ -322,8 +324,8 @@ backBtn.addEventListener("click", () => location.reload());
 // El canvas se superpone exactamente sobre el rectangulo de la media
 // (layoutCanvasToMedia), asi que los landmarks se usan tal cual: su espacio
 // normalizado coincide con el del canvas.
-function placeVisibleOrgans(landmarks) {
-  const frame = pipeline.computeTorsoFrame(landmarks);
+function placeVisibleOrgans(landmarks, worldLandmarks) {
+  const frame = pipeline.computeTorsoFrame(landmarks, worldLandmarks);
   if (!frame) return false;
   for (const name of Object.keys(organObjects)) {
     const e = organObjects[name];
@@ -334,15 +336,23 @@ function placeVisibleOrgans(landmarks) {
       s.position.copy(target.position);
       s.scale = target.scale;
       s.rotationZ = target.rotationZ;
+      if (target.quaternion) s.quaternion.copy(target.quaternion);
       s.ready = true;
     } else {
       s.position.lerp(target.position, SMOOTHING_ALPHA);
       s.scale += (target.scale - s.scale) * SMOOTHING_ALPHA;
       s.rotationZ = lerpAngle(s.rotationZ, target.rotationZ, SMOOTHING_ALPHA);
+      // Slerp para la orientacion 3D: interpolar cuaterniones evita los saltos
+      // y el bloqueo de ejes que da interpolar angulos por separado.
+      if (target.quaternion) s.quaternion.slerp(target.quaternion, SMOOTHING_ALPHA);
     }
     e.group.position.copy(s.position);
     e.group.scale.setScalar(s.scale);
-    e.group.rotation.set(0, 0, s.rotationZ);
+    if (target.quaternion) {
+      e.group.quaternion.copy(s.quaternion);   // orientacion 3D real del torso
+    } else {
+      e.group.rotation.set(0, 0, s.rotationZ); // respaldo: rotacion plana
+    }
   }
   return true;
 }
@@ -407,9 +417,11 @@ async function runCameraMode() {
       const res = landmarker.detectForVideo(video, performance.now());
       const lms = res.landmarks && res.landmarks[0];
       landmarkCountEl.textContent = lms ? lms.length : "0";
+      const wlms = res.worldLandmarks && res.worldLandmarks[0];
       if (lms && lms.length) {
         lastLandmarks = lms;
-        placeVisibleOrgans(lms);
+        lastWorldLandmarks = wlms;
+        placeVisibleOrgans(lms, wlms);
         poseDetected = true;
         anatomyRoot.visible = true;   // solo se muestra con persona detectada
         setStatus("trackeando persona");
@@ -452,6 +464,7 @@ async function runTestMode() {
     const res = landmarker.detect(off);
     if (res.landmarks && res.landmarks[0] && res.landmarks[0].length) {
       landmarks = res.landmarks[0];
+      lastWorldLandmarks = res.worldLandmarks && res.worldLandmarks[0];
       setStatus("pose detectada en figura");
     }
   } catch (e) { console.warn("deteccion en imagen fallo:", e); }
@@ -472,7 +485,7 @@ async function runTestMode() {
   const tick = makeFpsMeter();
   function frame() {
     requestAnimationFrame(frame);
-    placeVisibleOrgans(landmarks); // el suavizado converge; permite togglear en vivo
+    placeVisibleOrgans(landmarks, lastWorldLandmarks); // suavizado converge
     drawSkeleton(landmarks);
     renderer.render(scene, camera);
     tick();
@@ -657,11 +670,22 @@ function startMode(mode) {
   window.__ar = {
     step(n = 12) {
       if (lastLandmarks) {
-        for (let i = 0; i < n; i++) placeVisibleOrgans(lastLandmarks);
+        for (let i = 0; i < n; i++) placeVisibleOrgans(lastLandmarks, lastWorldLandmarks);
         drawSkeleton(lastLandmarks);
       }
       renderer.render(scene, camera);
       return this.state();
+    },
+    world() {
+      if (!lastWorldLandmarks) return null;
+      const p = (i) => { const l = lastWorldLandmarks[i]; return l ? {x:+l.x.toFixed(3), y:+l.y.toFixed(3), z:+l.z.toFixed(3)} : null; };
+      return { hombroIzq: p(11), hombroDer: p(12), caderaIzq: p(23), caderaDer: p(24), nariz: p(0) };
+    },
+    organQuat(name) {
+      const e = organObjects[name];
+      if (!e || !e.loaded) return null;
+      const q = e.group.quaternion, eu = new THREE.Euler().setFromQuaternion(q, "XYZ");
+      return { euler: { x:+eu.x.toFixed(3), y:+eu.y.toFixed(3), z:+eu.z.toFixed(3) } };
     },
     organPos(name) {
       const e = organObjects[name];
