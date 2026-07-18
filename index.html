@@ -85,6 +85,67 @@
     </div>
   </div>
 
+  <!-- Bootstrap clasico (NO module): se ejecuta siempre, aunque fallen los
+       import maps, el CDN o el navegador sea viejo. Sin esto, cualquier fallo
+       en la cadena de modulos dejaba los botones muertos y sin mensaje. -->
+  <script>
+  (function () {
+    var pending = null;
+
+    function showFatal(msg, hint) {
+      var box = document.getElementById("fatal") || (function () {
+        var d = document.createElement("div");
+        d.id = "fatal";
+        d.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:99;" +
+          "background:#2a1416;border:1px solid #f0a060;color:#ffd9c0;border-radius:8px;" +
+          "padding:12px 14px;font:12px/1.5 Inter,system-ui,sans-serif;white-space:pre-wrap";
+        document.body.appendChild(d);
+        return d;
+      })();
+      box.textContent = "No se pudo iniciar: " + msg + (hint ? "\n" + hint : "");
+    }
+    window.__showFatal = showFatal;
+
+    // Delegacion de eventos: funciona apenas existe el HTML, sin esperar modulos.
+    document.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest(".mode-btn") : null;
+      if (!btn) return;
+      var mode = btn.dataset.mode;
+      if (window.__startMode) { window.__startMode(mode); return; }
+      // El motor 3D todavia no cargo: se recuerda la eleccion y se avisa.
+      pending = mode;
+      window.__pendingMode = mode;
+      var st = document.getElementById("status");
+      if (st) st.textContent = "cargando motor 3D...";
+      btn.style.borderColor = "#7ee787";
+    });
+
+    // Si el navegador no soporta modulos ES, avisar explicitamente.
+    if (!("noModule" in HTMLScriptElement.prototype)) {
+      showFatal("este navegador no soporta modulos de JavaScript (ES modules).",
+        "Actualiza el navegador o proba con Chrome.");
+      return;
+    }
+
+    // Si a los 20s el motor no cargo, decir por que en vez de quedarse mudo.
+    setTimeout(function () {
+      if (!window.__startMode) {
+        showFatal("no cargo el motor 3D (Three.js / MediaPipe desde CDN).",
+          "Puede ser la conexion, un bloqueador de contenido, o un navegador sin soporte de import maps. " +
+          (pending ? "Volve a tocar el boton cuando cargue." : ""));
+      }
+    }, 20000);
+
+    window.addEventListener("error", function (ev) {
+      if (ev.message) showFatal(ev.message);
+    });
+    window.addEventListener("unhandledrejection", function (ev) {
+      var m = ev.reason && (ev.reason.message || ev.reason);
+      if (m) showFatal(String(m));
+    });
+  })();
+  </script>
+
   <script type="importmap">
   {
     "imports": {

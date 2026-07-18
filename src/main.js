@@ -509,6 +509,19 @@ function startMode(mode) {
   run().catch((err) => { setStatus("error: " + err.message); console.error(err); });
 }
 
-document.querySelectorAll(".mode-btn").forEach((btn) => {
-  btn.addEventListener("click", () => startMode(btn.dataset.mode));
-});
+// Los clics de los botones los captura el bootstrap clasico de index.html
+// (delegacion), que funciona aunque este modulo tarde o falle. Aca solo se
+// publica el arranque real y se atiende una eleccion hecha durante la carga.
+window.__startMode = (mode) => {
+  try { startMode(mode); }
+  catch (err) {
+    console.error(err);
+    if (window.__showFatal) window.__showFatal(err.message);
+  }
+};
+
+if (window.__pendingMode) {
+  const m = window.__pendingMode;
+  window.__pendingMode = null;
+  window.__startMode(m);
+}
