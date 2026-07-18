@@ -14,6 +14,8 @@ const CAM_Z = 5;
 const video = document.getElementById("video");
 const testImg = document.getElementById("test-img");
 const canvas = document.getElementById("canvas");
+const skeletonCanvas = document.getElementById("skeleton");
+const skeletonCtx = skeletonCanvas.getContext("2d");
 const statusEl = document.getElementById("status");
 const modeNameEl = document.getElementById("mode-name");
 const fpsEl = document.getElementById("fps");
@@ -27,8 +29,10 @@ const backBtn = document.getElementById("back-btn");
 const xrBtn = document.getElementById("xr-btn");
 
 // --- estado ---
-let renderer, scene, camera, pipeline;
+let renderer, scene, camera, pipeline, anatomyRoot;
 let loader;
+let poseDetected = false;   // ya se detecto una persona al menos una vez
+let showSkeleton = true;    // overlay de landmarks (diagnostico)
 const organObjects = {}; // name -> { cfg, group, materials, nativeSize, smoothed, loaded, loading }
 const activeSystems = new Set(DEFAULT_ACTIVE_SYSTEMS);
 let globalOpacity = 1;
@@ -57,6 +61,14 @@ function setupScene({ xr = false } = {}) {
   fill.position.set(-3, -1, 2);
   scene.add(fill);
 
+  // Todos los organos cuelgan de este nodo. En modos con camara/imagen se
+  // mantiene OCULTO hasta que se detecte una persona: antes se mostraban
+  // apenas cargaban, asi que si la deteccion fallaba parecia que "proyecta
+  // los organos al vacio" en vez de avisar que no hay cuerpo detectado.
+  anatomyRoot = new THREE.Group();
+  anatomyRoot.visible = false;
+  scene.add(anatomyRoot);
+
   pipeline = new PosePipeline(camera);
   resize();
   window.addEventListener("resize", resize);
@@ -80,14 +92,56 @@ function computeMediaRect() {
 function layoutCanvasToMedia() {
   const r = computeMediaRect();
   if (!r) return false;
-  canvas.style.left = r.left + "px";
-  canvas.style.top = r.top + "px";
-  canvas.style.width = r.w + "px";
-  canvas.style.height = r.h + "px";
+  for (const el of [canvas, skeletonCanvas]) {
+    el.style.left = r.left + "px";
+    el.style.top = r.top + "px";
+    el.style.width = r.w + "px";
+    el.style.height = r.h + "px";
+  }
+  // El canvas 2D del esqueleto usa pixeles reales para dibujar nitido.
+  skeletonCanvas.width = Math.round(r.w);
+  skeletonCanvas.height = Math.round(r.h);
+
   renderer.setSize(r.w, r.h, false);
   camera.aspect = r.w / r.h;
   camera.updateProjectionMatrix();
   return true;
+}
+
+// Dibuja el esqueleto detectado. Es el diagnostico clave: si se ve sobre la
+// persona, la deteccion funciona y cualquier problema es de colocacion; si no
+// aparece nada, el problema es que MediaPipe no esta detectando.
+const BONES = [
+  [11, 12], [11, 23], [12, 24], [23, 24],          // torso
+  [11, 13], [13, 15], [12, 14], [14, 16],          // brazos
+  [23, 25], [25, 27], [24, 26], [26, 28],          // piernas
+];
+
+function drawSkeleton(landmarks) {
+  const w = skeletonCanvas.width, h = skeletonCanvas.height;
+  skeletonCtx.clearRect(0, 0, w, h);
+  if (!landmarks || !showSkeleton) return;
+
+  skeletonCtx.lineWidth = Math.max(2, w * 0.005);
+  skeletonCtx.strokeStyle = "#7ee787";
+  skeletonCtx.fillStyle = "#00e5ff";
+
+  for (const [a, b] of BONES) {
+    const p = landmarks[a], q = landmarks[b];
+    if (!p || !q) continue;
+    skeletonCtx.beginPath();
+    skeletonCtx.moveTo(p.x * w, p.y * h);
+    skeletonCtx.lineTo(q.x * w, q.y * h);
+    skeletonCtx.stroke();
+  }
+  const r = Math.max(3, w * 0.008);
+  for (const i of [11, 12, 23, 24]) {
+    const p = landmarks[i];
+    if (!p) continue;
+    skeletonCtx.beginPath();
+    skeletonCtx.arc(p.x * w, p.y * h, r, 0, Math.PI * 2);
+    skeletonCtx.fill();
+  }
 }
 
 function resize() {
@@ -158,7 +212,7 @@ async function ensureOrganLoaded(name) {
     const group = new THREE.Group();
     group.add(inner);
     group.visible = false;
-    scene.add(group);
+    anatomyRoot.add(group);
 
     entry.group = group;
     entry.materials = materials;
@@ -259,13 +313,25 @@ function placeVisibleOrgans(landmarks) {
 }
 
 // ---------- MediaPipe ----------
+// En varios GPU de celular el delegate "GPU" falla o no devuelve resultados.
+// Se intenta GPU y, si falla, se cae a CPU (mas lento pero funciona).
 async function createPoseLandmarker(runningMode) {
   const vision = await FilesetResolver.forVisionTasks(WASM_BASE);
-  return PoseLandmarker.createFromOptions(vision, {
-    baseOptions: { modelAssetPath: POSE_MODEL_URL, delegate: "GPU" },
+  const build = (delegate) => PoseLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: POSE_MODEL_URL, delegate },
     runningMode,
     numPoses: 1,
+    minPoseDetectionConfidence: 0.4,
+    minPosePresenceConfidence: 0.4,
+    minTrackingConfidence: 0.4,
   });
+  try {
+    return await build("GPU");
+  } catch (e) {
+    console.warn("delegate GPU fallo, usando CPU:", e && e.message);
+    setStatus("GPU no disponible, usando CPU");
+    return build("CPU");
+  }
 }
 
 // FPS helper
@@ -306,8 +372,21 @@ async function runCameraMode() {
       const res = landmarker.detectForVideo(video, performance.now());
       const lms = res.landmarks && res.landmarks[0];
       landmarkCountEl.textContent = lms ? lms.length : "0";
-      if (lms) { lastLandmarks = lms; placeVisibleOrgans(lms); setStatus("trackeando"); }
-      else setStatus("sin persona detectada");
+      if (lms && lms.length) {
+        lastLandmarks = lms;
+        placeVisibleOrgans(lms);
+        poseDetected = true;
+        anatomyRoot.visible = true;   // solo se muestra con persona detectada
+        setStatus("trackeando persona");
+      } else {
+        // Sin deteccion NO se dibujan organos: antes quedaban flotando en el
+        // centro y parecia que "proyecta al vacio".
+        anatomyRoot.visible = false;
+        setStatus(poseDetected
+          ? "perdi a la persona; volve a encuadrarla"
+          : "buscando persona: que se vean hombros y caderas, con buena luz");
+      }
+      drawSkeleton(lms);
     }
     renderer.render(scene, camera);
     tick();
@@ -352,10 +431,14 @@ async function runTestMode() {
   await preloadActiveSystems();
   setStatus("listo");
 
+  poseDetected = true;
+  anatomyRoot.visible = true;
+
   const tick = makeFpsMeter();
   function frame() {
     requestAnimationFrame(frame);
     placeVisibleOrgans(landmarks); // el suavizado converge; permite togglear en vivo
+    drawSkeleton(landmarks);
     renderer.render(scene, camera);
     tick();
   }
@@ -364,17 +447,47 @@ async function runTestMode() {
 
 // ---------- MODO: WebXR caminar alrededor ----------
 let xrRig = null;
+
+// Aviso honesto cuando el dispositivo no puede hacer AR con anclaje al mundo.
+function showNoXrNotice() {
+  const box = document.createElement("div");
+  box.className = "overlay";
+  box.style.background = "rgba(10,10,10,0.95)";
+  box.innerHTML =
+    '<h1>Este dispositivo no soporta AR</h1>' +
+    '<p>Para rodear a la persona y ver el otro lado de un organo hace falta ' +
+    'que el telefono siga su posicion en el espacio real (WebXR con ARCore). ' +
+    'Safari en iPhone no lo soporta, y algunos Android tampoco.</p>' +
+    '<p>El modo <b>Camara fija</b> si funciona en este dispositivo: detecta el ' +
+    'cuerpo y pega los organos encima, aunque sin poder rodearlo.</p>';
+  const btn = document.createElement("button");
+  btn.className = "mode-btn";
+  btn.textContent = "Usar camara fija";
+  btn.addEventListener("click", () => { box.remove(); location.href = location.pathname + "?modo=camera"; });
+  box.appendChild(btn);
+  const btn2 = document.createElement("button");
+  btn2.className = "mode-btn";
+  btn2.textContent = "Volver";
+  btn2.addEventListener("click", () => location.reload());
+  box.appendChild(btn2);
+  document.getElementById("stage").appendChild(box);
+}
 async function runWebXRMode() {
   modeNameEl.textContent = "caminar alrededor (AR)";
   video.style.display = "none";
   xrBtn.style.display = "inline-block";
 
   const supported = navigator.xr && (await navigator.xr.isSessionSupported?.("immersive-ar").catch(() => false));
+
+  // Sin WebXR no hay forma de sostener la posicion en el espacio real al
+  // caminar (hace falta tracking 6DOF de ARCore). Antes igual se dibujaba la
+  // anatomia flotando sobre negro y SIN camara, que es justo la "proyeccion
+  // al vacio". Ahora se dice claramente y se ofrece el modo que si sirve.
   if (!supported) {
-    setStatus("WebXR AR no disponible en este navegador");
-    xrBtn.textContent = "AR no soportado";
-    xrBtn.style.opacity = "0.5";
-    // igual mostramos la anatomia flotando para no dejar pantalla vacia
+    xrBtn.style.display = "none";
+    setStatus("este navegador no soporta AR");
+    showNoXrNotice();
+    return;
   }
 
   setStatus("cargando anatomia");
@@ -489,7 +602,10 @@ function startMode(mode) {
   // entornos que pausan requestAnimationFrame, como paneles de preview).
   window.__ar = {
     step(n = 12) {
-      if (lastLandmarks) for (let i = 0; i < n; i++) placeVisibleOrgans(lastLandmarks);
+      if (lastLandmarks) {
+        for (let i = 0; i < n; i++) placeVisibleOrgans(lastLandmarks);
+        drawSkeleton(lastLandmarks);
+      }
       renderer.render(scene, camera);
       return this.state();
     },
@@ -524,4 +640,9 @@ if (window.__pendingMode) {
   const m = window.__pendingMode;
   window.__pendingMode = null;
   window.__startMode(m);
+} else {
+  // Permite entrar directo a un modo por URL (?modo=camera), usado por el
+  // aviso de "sin AR" para saltar al modo que si funciona.
+  const m = new URLSearchParams(location.search).get("modo");
+  if (m && ["camera", "test", "webxr"].includes(m)) window.__startMode(m);
 }
