@@ -179,6 +179,25 @@ export class PosePipeline {
     };
   }
 
+  // Transformacion UNICA del cuerpo entero. Los organos ya estan montados con
+  // sus posiciones relativas fijas dentro del rig, asi que basta con ubicar,
+  // orientar y escalar el conjunto. Antes se calculaba una transformacion por
+  // organo y cada uno suavizaba a su ritmo, por eso se desconectaban entre si.
+  computeRigTransform(frame, canon) {
+    // Ancla en la linea de hombros, corrida por el slider de altura a lo largo
+    // del eje del torso (no en vertical de pantalla, para que valga tambien
+    // con la persona acostada o inclinada).
+    const t = this.calib.offsetT;
+    const ndcX = frame.shoulderMidNdc.x + (frame.hipMidNdc.x - frame.shoulderMidNdc.x) * t;
+    const ndcY = frame.shoulderMidNdc.y + (frame.hipMidNdc.y - frame.shoulderMidNdc.y) * t;
+    const position = this.unprojectToDepth(ndcX, ndcY, 0);
+
+    // Escala: cuanto mide el torso detectado respecto del torso canonico.
+    const scale = (frame.torsoHeight0 / canon.torsoHeight) * this.calib.scale;
+
+    return { position, scale, quaternion: frame.quaternion, rotationZ: frame.rotationZ };
+  }
+
   // Calcula posicion, escala y rotacion objetivo de un organo dado el marco.
   computeOrganTarget(cfg, frame, nativeSize) {
     // Ancla vertical. Los organos de cabeza (cerebro) se anclan a la nariz,

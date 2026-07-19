@@ -56,13 +56,20 @@ export const ORGANS = {
   bladder:         { label: "Vejiga urinaria", file: "./assets/organs/VH_M_Urinary_Bladder.glb", system: "urinario", anchorT: 0.92, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.22, depth: 0.06 },
 
   // nervioso
-  brain:           { label: "Cerebro", file: "./assets/organs/Allen_M_Brain.glb",       system: "nervioso",       anchorTo: "head", headOffsetY: 0.40, anchorT: -0.58, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.5, depth: 0.10 },
+  brain:           { label: "Cerebro", file: "./assets/organs/Allen_M_Brain.glb",       system: "nervioso",       anchorT: -0.62, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.62, depth: 0.10 },
   spinal_cord:     { label: "Médula espinal", file: "./assets/organs/VH_M_Spinal_Cord.glb", system: "nervioso",   anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: -0.22 },
 
   // esqueleto (capa mas profunda)
   vertebrae:       { label: "Columna vertebral", file: "./assets/organs/VH_M_Vertebrae.glb", system: "esqueleto", anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.15, depth: -0.30 },
   pelvis:          { label: "Pelvis", file: "./assets/organs/VH_M_Pelvis.glb",          system: "esqueleto",      anchorT: 0.95, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.78, depth: -0.24 },
 };
+
+// Cuerpo canonico de referencia (metros). Todos los organos se montan UNA vez
+// dentro de un rig usando estas medidas, con sus posiciones relativas fijas.
+// Despues se mueve/rota/escala el rig entero como una sola pieza: asi la
+// columna nunca se despega de la pelvis ni el corazon se aleja del torax.
+// El origen del rig esta en la linea de hombros; +y sube, -y baja hacia caderas.
+export const CANON = { shoulderWidth: 0.40, torsoHeight: 0.52, depthScale: 0.45 };
 
 // Sistemas activos al iniciar (buena vista tipo "rayos X" sin saturar).
 export const DEFAULT_ACTIVE_SYSTEMS = ["esqueleto", "cardiovascular", "respiratorio"];

@@ -5,7 +5,7 @@ import { PoseLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 // el cache del navegador no sirva una mezcla de codigo viejo y nuevo.
 const _v = new URL(import.meta.url).searchParams.get("v");
 const _q = _v ? "?v=" + _v : "";
-const { ORGANS, SYSTEMS, DEFAULT_ACTIVE_SYSTEMS, AUTHORED_TEST_LANDMARKS } = await import("./config.js" + _q);
+const { ORGANS, SYSTEMS, CANON, DEFAULT_ACTIVE_SYSTEMS, AUTHORED_TEST_LANDMARKS } = await import("./config.js" + _q);
 const { PosePipeline, lerpAngle } = await import("./pose-pipeline.js" + _q);
 
 const POSE_MODEL_URL =
@@ -13,6 +13,8 @@ const POSE_MODEL_URL =
 const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
 const SMOOTHING_ALPHA = 0.28;
 const CAM_Z = 5;
+// mismo factor que pose-pipeline: el hombro (acromion) es mas ancho que el tronco
+const TRUNK_WIDTH_FACTOR = 0.72;
 
 // --- DOM ---
 const video = document.getElementById("video");
@@ -33,7 +35,9 @@ const backBtn = document.getElementById("back-btn");
 const xrBtn = document.getElementById("xr-btn");
 
 // --- estado ---
-let renderer, scene, camera, pipeline, anatomyRoot;
+let renderer, scene, camera, pipeline, anatomyRoot, anatomyRig;
+const rigSmoothed = { position: new THREE.Vector3(), scale: 1,
+                      quaternion: new THREE.Quaternion(), rotationZ: 0, ready: false };
 let loader;
 let poseDetected = false;   // ya se detecto una persona al menos una vez
 let showSkeleton = true;    // overlay de landmarks (diagnostico)
@@ -77,6 +81,11 @@ function setupScene({ xr = false } = {}) {
   anatomyRoot.visible = false;
   scene.add(anatomyRoot);
 
+  // Rig unico: contiene TODOS los organos con sus posiciones relativas fijas.
+  // Se transforma como una sola pieza, asi el cuerpo queda enlazado.
+  anatomyRig = new THREE.Group();
+  anatomyRoot.add(anatomyRig);
+
   pipeline = new PosePipeline(camera);
   resize();
   window.addEventListener("resize", resize);
@@ -99,7 +108,9 @@ function computeMediaRect() {
 // del canvas: no hace falta corregir por object-fit y no hay deriva.
 function layoutCanvasToMedia() {
   const r = computeMediaRect();
-  if (!r) return false;
+  // Un viewport de 0 (rotacion de pantalla, pestana oculta) daria aspect=NaN,
+  // y eso propaga NaN a toda la matriz de proyeccion: los organos desaparecen.
+  if (!r || !(r.w > 0) || !(r.h > 0)) return false;
   currentMediaRect = r;
   for (const el of [canvas, skeletonCanvas]) {
     el.style.left = r.left + "px";
@@ -144,7 +155,8 @@ function drawOrganLabels(w, h) {
   for (const name of Object.keys(organObjects)) {
     const e = organObjects[name];
     if (!e.loaded || !e.group.visible) continue;
-    const p = e.group.position.clone().project(camera);
+    // posicion MUNDIAL: el organo vive dentro del rig, su position es local
+    const p = e.group.getWorldPosition(new THREE.Vector3()).project(camera);
     if (p.z > 1) continue; // detras de la camara
     items.push({
       text: e.cfg.label || name,
@@ -256,7 +268,7 @@ function resize() {
   }
   // camara / imagen: ajustar al rectangulo real de la media si ya se conoce.
   if (!layoutCanvasToMedia()) {
-    const w = window.innerWidth, h = window.innerHeight;
+    const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -310,16 +322,28 @@ async function ensureOrganLoaded(name) {
       }
     });
 
+    // El organo se monta DENTRO del rig con su posicion anatomica relativa
+    // fija (en unidades del cuerpo canonico). Nunca se vuelve a tocar: el
+    // conjunto entero se mueve como una sola pieza.
+    const nativeSize = (cfg.sizeRef === "torsoHeight" ? size.y : size.x) || 0.001;
+    const base = cfg.sizeRef === "torsoHeight"
+      ? CANON.torsoHeight
+      : CANON.shoulderWidth * TRUNK_WIDTH_FACTOR;
+
     const group = new THREE.Group();
     group.add(inner);
+    group.position.set(
+      (cfg.lateral || 0) * CANON.shoulderWidth,
+      -(cfg.anchorT || 0) * CANON.torsoHeight,
+      (cfg.depth || 0) * CANON.depthScale
+    );
+    group.scale.setScalar((base * cfg.ratio) / nativeSize);
     group.visible = false;
-    anatomyRoot.add(group);
+    anatomyRig.add(group);
 
     entry.group = group;
     entry.materials = materials;
-    entry.nativeSize = (cfg.sizeRef === "torsoHeight" ? size.y : size.x) || 0.001;
-    entry.smoothed = { position: new THREE.Vector3(), scale: 0.001, rotationZ: 0,
-                       quaternion: new THREE.Quaternion(), ready: false };
+    entry.nativeSize = nativeSize;
     entry.loaded = true;
     applyOpacity(name);
   })().catch((e) => {
@@ -430,6 +454,9 @@ calibY.addEventListener("input", () => {
 });
 calibS.addEventListener("input", () => {
   const v = Number(calibS.value);
+  // En AR el rig se escala directo (no pasa por el pipeline de pose).
+  currentRigScale = v / 100;
+  if (currentMode === "webxr" && anatomyRig) anatomyRig.scale.setScalar(currentRigScale);
   calibSVal.textContent = v + "%";
   if (pipeline) pipeline.calib.scale = v / 100;
 });
@@ -443,32 +470,33 @@ backBtn.addEventListener("click", () => location.reload());
 function placeVisibleOrgans(landmarks, worldLandmarks) {
   const frame = pipeline.computeTorsoFrame(landmarks, worldLandmarks);
   if (!frame) return false;
-  for (const name of Object.keys(organObjects)) {
-    const e = organObjects[name];
-    if (!e.loaded || !e.group.visible) continue;
-    const target = pipeline.computeOrganTarget(e.cfg, frame, e.nativeSize);
-    const s = e.smoothed;
-    if (!s.ready) {
-      s.position.copy(target.position);
-      s.scale = target.scale;
-      s.rotationZ = target.rotationZ;
-      if (target.quaternion) s.quaternion.copy(target.quaternion);
-      s.ready = true;
-    } else {
-      s.position.lerp(target.position, SMOOTHING_ALPHA);
-      s.scale += (target.scale - s.scale) * SMOOTHING_ALPHA;
-      s.rotationZ = lerpAngle(s.rotationZ, target.rotationZ, SMOOTHING_ALPHA);
-      // Slerp para la orientacion 3D: interpolar cuaterniones evita los saltos
-      // y el bloqueo de ejes que da interpolar angulos por separado.
-      if (target.quaternion) s.quaternion.slerp(target.quaternion, SMOOTHING_ALPHA);
-    }
-    e.group.position.copy(s.position);
-    e.group.scale.setScalar(s.scale);
-    if (target.quaternion) {
-      e.group.quaternion.copy(s.quaternion);   // orientacion 3D real del torso
-    } else {
-      e.group.rotation.set(0, 0, s.rotationZ); // respaldo: rotacion plana
-    }
+
+  // UNA sola transformacion para todo el cuerpo. Los organos conservan sus
+  // posiciones relativas fijas dentro del rig, asi que se mueven juntos y
+  // nunca se desconectan entre si.
+  const target = pipeline.computeRigTransform(frame, CANON);
+  const s = rigSmoothed;
+  if (!s.ready) {
+    s.position.copy(target.position);
+    s.scale = target.scale;
+    s.rotationZ = target.rotationZ;
+    if (target.quaternion) s.quaternion.copy(target.quaternion);
+    s.ready = true;
+  } else {
+    s.position.lerp(target.position, SMOOTHING_ALPHA);
+    s.scale += (target.scale - s.scale) * SMOOTHING_ALPHA;
+    s.rotationZ = lerpAngle(s.rotationZ, target.rotationZ, SMOOTHING_ALPHA);
+    // Slerp para la orientacion 3D: interpolar cuaterniones evita los saltos
+    // y el bloqueo de ejes que da interpolar angulos por separado.
+    if (target.quaternion) s.quaternion.slerp(target.quaternion, SMOOTHING_ALPHA);
+  }
+
+  anatomyRig.position.copy(s.position);
+  anatomyRig.scale.setScalar(s.scale);
+  if (target.quaternion) {
+    anatomyRig.quaternion.copy(s.quaternion);   // orientacion 3D real del torso
+  } else {
+    anatomyRig.rotation.set(0, 0, s.rotationZ); // respaldo: rotacion plana
   }
   return true;
 }
@@ -611,6 +639,7 @@ async function runTestMode() {
 
 // ---------- MODO: WebXR caminar alrededor ----------
 let xrRig = null;
+let currentRigScale = 1; // 1 = tamano real (el rig esta en metros)
 
 // Aviso honesto cuando el dispositivo no puede hacer AR con anclaje al mundo.
 function showNoXrNotice() {
@@ -656,13 +685,18 @@ async function runWebXRMode() {
 
   setStatus("cargando anatomia");
   await preloadActiveSystems();
-  xrRig = buildAnatomyRig();
+  // Se usa el MISMO rig que los otros modos, no una copia. Antes se clonaban
+  // los organos al entrar en AR, asi que prender o apagar un sistema despues
+  // no afectaba a los clones y los chips parecian no funcionar.
+  xrRig = anatomyRig;
+  // El rig ya esta en metros (cuerpo canonico), o sea tamano real para AR.
+  xrRig.position.set(0, 0, -1.2);
+  xrRig.quaternion.identity();
+  xrRig.scale.setScalar(currentRigScale);
   // OCULTO hasta entrar a la sesion AR: el passthrough de camara solo existe
   // dentro de la sesion, asi que dibujarlo antes daba una pantalla negra con
   // organos flotando (que es justo lo que se veia mal).
-  xrRig.visible = false;
-  xrRig.position.set(0, 0, -1.2);
-  scene.add(xrRig);
+  anatomyRoot.visible = false;
 
   // reticulo para hit-test (se crea antes: enterXrSession lo necesita)
   const reticle = new THREE.Mesh(
@@ -689,7 +723,7 @@ async function runWebXRMode() {
       });
       renderer.xr.setReferenceSpaceType("local");
       await renderer.xr.setSession(session);
-      xrRig.visible = true; // ya hay passthrough de camara detras
+      anatomyRoot.visible = true; // ya hay passthrough de camara detras
       setStatus("busca una superficie y toca para colocar");
 
       const viewerSpace = await session.requestReferenceSpace("viewer");
@@ -704,7 +738,7 @@ async function runWebXRMode() {
         }
       });
       session.addEventListener("end", () => {
-        hitTestSource = null; xrRig.visible = false; entrando = false;
+        hitTestSource = null; anatomyRoot.visible = false; entrando = false;
         setStatus("sesion AR terminada");
       });
       return true;
@@ -760,28 +794,6 @@ async function runWebXRMode() {
   setStatus(supported ? "toca 'Colocar en AR'" : "vista previa (sin AR real)");
 }
 
-// Rig anatomico con posiciones 3D reales (metros), para paralaje al rodear.
-const CANON = { shoulderWidth: 0.4, torsoHeight: 0.52, depthScale: 0.5 };
-let currentRigScale = 1;
-function buildAnatomyRig() {
-  const rig = new THREE.Group();
-  for (const name of Object.keys(organObjects)) {
-    const e = organObjects[name];
-    if (!e.loaded || !e.group.visible) continue;
-    const cfg = e.cfg;
-    const holder = new THREE.Group();
-    const clone = e.group.children[0].clone(true);
-    holder.add(clone);
-    const x = (cfg.lateral || 0) * CANON.shoulderWidth;
-    const y = -(cfg.anchorT || 0) * CANON.torsoHeight + CANON.torsoHeight * 0.25;
-    const z = (cfg.depth || 0) * CANON.depthScale;
-    holder.position.set(x, y, z);
-    const base = cfg.sizeRef === "torsoHeight" ? CANON.torsoHeight : CANON.shoulderWidth;
-    holder.scale.setScalar((base * cfg.ratio) / e.nativeSize);
-    rig.add(holder);
-  }
-  return rig;
-}
 
 // ---------- util ----------
 async function preloadActiveSystems() {
@@ -831,6 +843,19 @@ function startMode(mode) {
     },
     labels() { return { cajas: lastLabelBoxes, rect: currentMediaRect, vw: window.innerWidth }; },
     simularRect(r) { currentMediaRect = r; },
+    rig() {
+      if (!anatomyRig) return null;
+      const q = anatomyRig.quaternion, p = anatomyRig.position, sc = anatomyRig.scale;
+      return { pos: [p.x, p.y, p.z], scale: sc.x, quat: [q.x, q.y, q.z, q.w],
+               suavizado: { pos: rigSmoothed.position.toArray(), scale: rigSmoothed.scale,
+                            quat: rigSmoothed.quaternion.toArray(), ready: rigSmoothed.ready } };
+    },
+    organWorld(name) {
+      const e = organObjects[name];
+      if (!e || !e.loaded) return null;
+      const v = e.group.getWorldPosition(new THREE.Vector3());
+      return { x: +v.x.toFixed(4), y: +v.y.toFixed(4), z: +v.z.toFixed(4) };
+    },
     organPos(name) {
       const e = organObjects[name];
       if (!e || !e.loaded) return null;
