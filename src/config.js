@@ -28,39 +28,40 @@ export const SYSTEMS = {
   nervioso:       { label: "Nervioso",      color: "#e6e2b0", defaultOpacity: 0.95 },
 };
 
+// label: nombre mostrado en pantalla (uso educativo).
 export const ORGANS = {
   // piel (translucida, capa mas externa)
-  skin:            { file: "./assets/organs/VH_M_Skin.glb",              system: "piel",           anchorT: 0.50, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: 0.34 },
+  skin:            { label: "Piel", file: "./assets/organs/VH_M_Skin.glb",              system: "piel",           anchorT: 0.50, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: 0.34 },
 
   // respiratorio
-  lung:            { file: "./assets/organs/VH_M_Lung.glb",              system: "respiratorio",   anchorT: 0.26, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.95, depth: 0.10 },
+  lung:            { label: "Pulmones", file: "./assets/organs/VH_M_Lung.glb",          system: "respiratorio",   anchorT: 0.26, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.95, depth: 0.10 },
 
   // cardiovascular
-  heart:           { file: "./assets/organs/VH_M_Heart.glb",            system: "cardiovascular", anchorT: 0.32, lateral: -0.05, sizeRef: "shoulderWidth", ratio: 0.40, depth: 0.16 },
-  vasculature:     { file: "./assets/organs/VH_M_Blood_Vasculature.glb", system: "cardiovascular", anchorT: 0.45, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.10, depth: 0.06 },
+  heart:           { label: "Corazón", file: "./assets/organs/VH_M_Heart.glb",          system: "cardiovascular", anchorT: 0.32, lateral: -0.05, sizeRef: "shoulderWidth", ratio: 0.40, depth: 0.16 },
+  vasculature:     { label: "Vasos sanguíneos", file: "./assets/organs/VH_M_Blood_Vasculature.glb", system: "cardiovascular", anchorT: 0.45, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.10, depth: 0.06 },
 
   // digestivo
-  liver:           { file: "./assets/organs/VH_M_Liver.glb",             system: "digestivo",      anchorT: 0.48, lateral: -0.12, sizeRef: "shoulderWidth", ratio: 0.62, depth: 0.12 },
-  spleen:          { file: "./assets/organs/VH_M_Spleen.glb",            system: "digestivo",      anchorT: 0.48, lateral: 0.28, sizeRef: "shoulderWidth", ratio: 0.22, depth: 0.10 },
-  pancreas:        { file: "./assets/organs/VH_M_Pancreas.glb",          system: "digestivo",      anchorT: 0.52, lateral: 0.05, sizeRef: "shoulderWidth", ratio: 0.34, depth: 0.04 },
-  gallbladder:     { file: "./assets/organs/VH_M_Gallbladder.glb",       system: "digestivo",      anchorT: 0.50, lateral: -0.14, sizeRef: "shoulderWidth", ratio: 0.12, depth: 0.13 },
-  small_intestine: { file: "./assets/organs/VH_M_Small_Intestine.glb",   system: "digestivo",      anchorT: 0.66, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.70, depth: 0.11 },
-  large_intestine: { file: "./assets/organs/SBU_M_Intestine_Large.glb",  system: "digestivo",      anchorT: 0.64, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.80, depth: 0.09 },
+  liver:           { label: "Hígado", file: "./assets/organs/VH_M_Liver.glb",           system: "digestivo",      anchorT: 0.48, lateral: -0.12, sizeRef: "shoulderWidth", ratio: 0.62, depth: 0.12 },
+  spleen:          { label: "Bazo", file: "./assets/organs/VH_M_Spleen.glb",            system: "digestivo",      anchorT: 0.48, lateral: 0.28, sizeRef: "shoulderWidth", ratio: 0.22, depth: 0.10 },
+  pancreas:        { label: "Páncreas", file: "./assets/organs/VH_M_Pancreas.glb",      system: "digestivo",      anchorT: 0.52, lateral: 0.05, sizeRef: "shoulderWidth", ratio: 0.34, depth: 0.04 },
+  gallbladder:     { label: "Vesícula biliar", file: "./assets/organs/VH_M_Gallbladder.glb", system: "digestivo", anchorT: 0.50, lateral: -0.14, sizeRef: "shoulderWidth", ratio: 0.12, depth: 0.13 },
+  small_intestine: { label: "Intestino delgado", file: "./assets/organs/VH_M_Small_Intestine.glb", system: "digestivo", anchorT: 0.66, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.70, depth: 0.11 },
+  large_intestine: { label: "Intestino grueso", file: "./assets/organs/SBU_M_Intestine_Large.glb", system: "digestivo", anchorT: 0.64, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.80, depth: 0.09 },
 
   // urinario
-  kidney_l:        { file: "./assets/organs/VH_M_Kidney_L.glb",          system: "urinario",       anchorT: 0.55, lateral: 0.28, sizeRef: "shoulderWidth", ratio: 0.20, depth: -0.06 },
-  kidney_r:        { file: "./assets/organs/VH_M_Kidney_R.glb",          system: "urinario",       anchorT: 0.55, lateral: -0.28, sizeRef: "shoulderWidth", ratio: 0.20, depth: -0.06 },
-  ureter_l:        { file: "./assets/organs/VH_M_Ureter_L.glb",          system: "urinario",       anchorT: 0.72, lateral: 0.18, sizeRef: "torsoHeight", ratio: 0.42, depth: -0.04 },
-  ureter_r:        { file: "./assets/organs/VH_M_Ureter_R.glb",          system: "urinario",       anchorT: 0.72, lateral: -0.18, sizeRef: "torsoHeight", ratio: 0.42, depth: -0.04 },
-  bladder:         { file: "./assets/organs/VH_M_Urinary_Bladder.glb",   system: "urinario",       anchorT: 0.92, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.22, depth: 0.06 },
+  kidney_l:        { label: "Riñón izquierdo", file: "./assets/organs/VH_M_Kidney_L.glb", system: "urinario",     anchorT: 0.55, lateral: 0.28, sizeRef: "shoulderWidth", ratio: 0.20, depth: -0.06 },
+  kidney_r:        { label: "Riñón derecho", file: "./assets/organs/VH_M_Kidney_R.glb",  system: "urinario",      anchorT: 0.55, lateral: -0.28, sizeRef: "shoulderWidth", ratio: 0.20, depth: -0.06 },
+  ureter_l:        { label: "Uréter izquierdo", file: "./assets/organs/VH_M_Ureter_L.glb", system: "urinario",    anchorT: 0.72, lateral: 0.18, sizeRef: "torsoHeight", ratio: 0.42, depth: -0.04 },
+  ureter_r:        { label: "Uréter derecho", file: "./assets/organs/VH_M_Ureter_R.glb", system: "urinario",      anchorT: 0.72, lateral: -0.18, sizeRef: "torsoHeight", ratio: 0.42, depth: -0.04 },
+  bladder:         { label: "Vejiga urinaria", file: "./assets/organs/VH_M_Urinary_Bladder.glb", system: "urinario", anchorT: 0.92, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.22, depth: 0.06 },
 
   // nervioso
-  brain:           { file: "./assets/organs/Allen_M_Brain.glb",          system: "nervioso",       anchorTo: "head", headOffsetY: 0.40, anchorT: -0.58, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.5, depth: 0.10 },
-  spinal_cord:     { file: "./assets/organs/VH_M_Spinal_Cord.glb",       system: "nervioso",       anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: -0.22 },
+  brain:           { label: "Cerebro", file: "./assets/organs/Allen_M_Brain.glb",       system: "nervioso",       anchorTo: "head", headOffsetY: 0.40, anchorT: -0.58, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.5, depth: 0.10 },
+  spinal_cord:     { label: "Médula espinal", file: "./assets/organs/VH_M_Spinal_Cord.glb", system: "nervioso",   anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.05, depth: -0.22 },
 
   // esqueleto (capa mas profunda)
-  vertebrae:       { file: "./assets/organs/VH_M_Vertebrae.glb",         system: "esqueleto",      anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.15, depth: -0.30 },
-  pelvis:          { file: "./assets/organs/VH_M_Pelvis.glb",            system: "esqueleto",      anchorT: 0.95, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.78, depth: -0.24 },
+  vertebrae:       { label: "Columna vertebral", file: "./assets/organs/VH_M_Vertebrae.glb", system: "esqueleto", anchorT: 0.52, lateral: 0.00, sizeRef: "torsoHeight", ratio: 1.15, depth: -0.30 },
+  pelvis:          { label: "Pelvis", file: "./assets/organs/VH_M_Pelvis.glb",          system: "esqueleto",      anchorT: 0.95, lateral: 0.00, sizeRef: "shoulderWidth", ratio: 0.78, depth: -0.24 },
 };
 
 // Sistemas activos al iniciar (buena vista tipo "rayos X" sin saturar).

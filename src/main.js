@@ -37,6 +37,7 @@ let renderer, scene, camera, pipeline, anatomyRoot;
 let loader;
 let poseDetected = false;   // ya se detecto una persona al menos una vez
 let showSkeleton = true;    // overlay de landmarks (diagnostico)
+let showLabels = true;      // nombres de cada estructura (uso educativo)
 const organObjects = {}; // name -> { cfg, group, materials, nativeSize, smoothed, loaded, loading }
 const activeSystems = new Set(DEFAULT_ACTIVE_SYSTEMS);
 let globalOpacity = 1;
@@ -122,11 +123,86 @@ const BONES = [
   [23, 25], [25, 27], [24, 26], [26, 28],          // piernas
 ];
 
-function drawSkeleton(landmarks) {
+// Dibuja todo el overlay 2D en un solo pase (limpia una vez y compone).
+function drawOverlay(landmarks) {
   const w = skeletonCanvas.width, h = skeletonCanvas.height;
   skeletonCtx.clearRect(0, 0, w, h);
-  if (!landmarks || !showSkeleton) return;
+  if (showSkeleton && landmarks) drawSkeletonLines(landmarks, w, h);
+  if (showLabels) drawOrganLabels(w, h);
+}
 
+// Nombres de cada estructura, proyectados desde su posicion 3D real. Se dibuja
+// en el canvas 2D (no como sprites) para que el texto quede nitido y legible.
+function drawOrganLabels(w, h) {
+  if (!anatomyRoot || !anatomyRoot.visible) return;
+
+  const items = [];
+  for (const name of Object.keys(organObjects)) {
+    const e = organObjects[name];
+    if (!e.loaded || !e.group.visible) continue;
+    const p = e.group.position.clone().project(camera);
+    if (p.z > 1) continue; // detras de la camara
+    items.push({
+      text: e.cfg.label || name,
+      x: (p.x * 0.5 + 0.5) * w,
+      y: (-p.y * 0.5 + 0.5) * h,
+      color: SYSTEMS[e.cfg.system].color,
+    });
+  }
+  if (!items.length) return;
+
+  const fs = Math.max(9, Math.round(w * 0.026));
+  skeletonCtx.font = "600 " + fs + "px Inter, system-ui, sans-serif";
+  skeletonCtx.textBaseline = "middle";
+
+  // Las etiquetas se llevan a los margenes (como lamina anatomica) para no
+  // tapar los organos, con una linea guia hasta su posicion real. Cada lado
+  // se separa por su cuenta para que no se pisen entre si.
+  const pad = 4;
+  const gap = fs * 1.7;
+  const cols = { izq: [], der: [] };
+  for (const it of items) {
+    it.tw = skeletonCtx.measureText(it.text).width;
+    (it.x < w / 2 ? cols.izq : cols.der).push(it);
+  }
+
+  for (const lado of ["izq", "der"]) {
+    const col = cols[lado];
+    col.sort((a, b) => a.y - b.y);
+    // reparte verticalmente evitando solapes y saliendo del canvas
+    for (let i = 0; i < col.length; i++) {
+      col[i].ty = i === 0 ? col[i].y : Math.max(col[i].y, col[i - 1].ty + gap);
+    }
+    const exceso = col.length ? col[col.length - 1].ty - (h - fs) : 0;
+    if (exceso > 0) for (const it of col) it.ty -= exceso;
+    for (const it of col) it.ty = Math.max(fs, Math.min(h - fs, it.ty));
+
+    for (const it of col) {
+      const tx = lado === "izq" ? pad : w - pad - it.tw;
+      const anclaX = lado === "izq" ? tx + it.tw + 4 : tx - 4;
+
+      skeletonCtx.strokeStyle = "rgba(255,255,255,0.45)";
+      skeletonCtx.lineWidth = 1;
+      skeletonCtx.beginPath();
+      skeletonCtx.moveTo(anclaX, it.ty);
+      skeletonCtx.lineTo(it.x, it.y);
+      skeletonCtx.stroke();
+
+      skeletonCtx.fillStyle = it.color;
+      skeletonCtx.beginPath();
+      skeletonCtx.arc(it.x, it.y, Math.max(2, fs * 0.18), 0, Math.PI * 2);
+      skeletonCtx.fill();
+
+      // fondo oscuro para que se lea sobre piel, ropa o fondo claro
+      skeletonCtx.fillStyle = "rgba(0,0,0,0.66)";
+      skeletonCtx.fillRect(tx - 3, it.ty - fs * 0.7, it.tw + 6, fs * 1.4);
+      skeletonCtx.fillStyle = it.color;
+      skeletonCtx.fillText(it.text, tx, it.ty);
+    }
+  }
+}
+
+function drawSkeletonLines(landmarks, w, h) {
   skeletonCtx.lineWidth = Math.max(2, w * 0.005);
   skeletonCtx.strokeStyle = "#7ee787";
   skeletonCtx.fillStyle = "#00e5ff";
@@ -281,6 +357,26 @@ function buildChips() {
   });
   chipsEl.appendChild(todos);
 
+  // Nombres de las estructuras (modo educativo).
+  const nombres = document.createElement("div");
+  nombres.className = "chip" + (showLabels ? " active" : "");
+  nombres.textContent = "Nombres";
+  nombres.addEventListener("click", () => {
+    showLabels = !showLabels;
+    nombres.classList.toggle("active", showLabels);
+  });
+  chipsEl.appendChild(nombres);
+
+  // Esqueleto de deteccion (util para ensenar y para diagnosticar).
+  const esq = document.createElement("div");
+  esq.className = "chip" + (showSkeleton ? " active" : "");
+  esq.textContent = "Puntos";
+  esq.addEventListener("click", () => {
+    showSkeleton = !showSkeleton;
+    esq.classList.toggle("active", showSkeleton);
+  });
+  chipsEl.appendChild(esq);
+
   Object.entries(SYSTEMS).forEach(([sys, meta]) => {
     const chip = document.createElement("div");
     chip.className = "chip" + (activeSystems.has(sys) ? " active" : "");
@@ -433,7 +529,7 @@ async function runCameraMode() {
           ? "perdi a la persona; volve a encuadrarla"
           : "buscando persona: que se vean hombros y caderas, con buena luz");
       }
-      drawSkeleton(lms);
+      drawOverlay(lms);
     }
     renderer.render(scene, camera);
     tick();
@@ -486,7 +582,7 @@ async function runTestMode() {
   function frame() {
     requestAnimationFrame(frame);
     placeVisibleOrgans(landmarks, lastWorldLandmarks); // suavizado converge
-    drawSkeleton(landmarks);
+    drawOverlay(landmarks);
     renderer.render(scene, camera);
     tick();
   }
@@ -697,7 +793,7 @@ function startMode(mode) {
     step(n = 12) {
       if (lastLandmarks) {
         for (let i = 0; i < n; i++) placeVisibleOrgans(lastLandmarks, lastWorldLandmarks);
-        drawSkeleton(lastLandmarks);
+        drawOverlay(lastLandmarks);
       }
       renderer.render(scene, camera);
       return this.state();
