@@ -8,6 +8,12 @@ const LM = { NOSE: 0, LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12, LEFT_HIP: 23, RIGHT
 const HIP_VISIBILITY_THRESHOLD = 0.5;
 const FALLBACK_TORSO_RATIO = 1.35; // torso (hombro-cadera) ~ 1.35x ancho de hombros
 
+// Los landmarks de hombro caen en el ACROMION, bastante mas afuera que el
+// tronco real: la anchura biacromial ronda 40-45 cm y el torax 28-32 cm.
+// Usar el ancho de hombros crudo como referencia inflaba TODOS los organos
+// (se desbordaban del cuerpo). Este factor lo corrige de una sola vez.
+const TRUNK_WIDTH_FACTOR = 0.72;
+
 function ndcFromLandmark(lm) {
   return { x: lm.x * 2 - 1, y: -(lm.y * 2 - 1) };
 }
@@ -201,7 +207,9 @@ export class PosePipeline {
     // Escala: medida de referencia en mundo, corregida por profundidad para
     // que el tamano aparente en pantalla sea consistente.
     const depthFactor = (this.camZ - depth) / this.camZ;
-    const base = cfg.sizeRef === "torsoHeight" ? frame.torsoHeight0 : frame.shoulderWidth0;
+    const base = cfg.sizeRef === "torsoHeight"
+      ? frame.torsoHeight0
+      : frame.shoulderWidth0 * TRUNK_WIDTH_FACTOR;
     const refWorld = base * depthFactor;
     const scale = (refWorld * cfg.ratio * this.calib.scale) / (nativeSize || 0.001);
 

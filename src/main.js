@@ -46,6 +46,8 @@ let mediaEl = null;   // <video> o <img> activo
 let mediaFit = "cover"; // "cover" (camara) | "contain" (imagen)
 let lastLandmarks = null;      // ultimos landmarks 2D aplicados
 let lastWorldLandmarks = null; // ultimos landmarks 3D (metros) para orientacion
+let currentMediaRect = null;   // rect de la media (puede desbordar el viewport)
+let lastLabelBoxes = [];       // instrumentacion: cajas de etiquetas dibujadas
 
 function setStatus(s) { statusEl.textContent = s; }
 
@@ -98,6 +100,7 @@ function computeMediaRect() {
 function layoutCanvasToMedia() {
   const r = computeMediaRect();
   if (!r) return false;
+  currentMediaRect = r;
   for (const el of [canvas, skeletonCanvas]) {
     el.style.left = r.left + "px";
     el.style.top = r.top + "px";
@@ -134,6 +137,7 @@ function drawOverlay(landmarks) {
 // Nombres de cada estructura, proyectados desde su posicion 3D real. Se dibuja
 // en el canvas 2D (no como sprites) para que el texto quede nitido y legible.
 function drawOrganLabels(w, h) {
+  lastLabelBoxes = [];
   if (!anatomyRoot || !anatomyRoot.visible) return;
 
   const items = [];
@@ -151,7 +155,19 @@ function drawOrganLabels(w, h) {
   }
   if (!items.length) return;
 
-  const fs = Math.max(9, Math.round(w * 0.026));
+  // Con object-fit "cover" el canvas es MAS GRANDE que la pantalla y se sale
+  // por los costados. Las etiquetas deben ir contra el borde VISIBLE, no
+  // contra el borde del canvas, o quedan cortadas ("lígado", "Baz"...).
+  const r = currentMediaRect || { left: 0, top: 0, w, h };
+  const vx0 = Math.max(0, -r.left);
+  const vx1 = Math.min(w, -r.left + window.innerWidth);
+  const vy0 = Math.max(0, -r.top);
+  const vy1 = Math.min(h, -r.top + window.innerHeight);
+  // margenes para no quedar debajo del HUD (arriba) ni de los chips (abajo)
+  const topSafe = Math.max(vy0, -r.top + 118);
+  const botSafe = Math.min(vy1, -r.top + window.innerHeight - 165);
+
+  const fs = Math.max(9, Math.round((vx1 - vx0) * 0.028));
   skeletonCtx.font = "600 " + fs + "px Inter, system-ui, sans-serif";
   skeletonCtx.textBaseline = "middle";
 
@@ -159,27 +175,31 @@ function drawOrganLabels(w, h) {
   // tapar los organos, con una linea guia hasta su posicion real. Cada lado
   // se separa por su cuenta para que no se pisen entre si.
   const pad = 4;
-  const gap = fs * 1.7;
+  const gap = fs * 1.6;
+  const medio = (vx0 + vx1) / 2;
   const cols = { izq: [], der: [] };
   for (const it of items) {
     it.tw = skeletonCtx.measureText(it.text).width;
-    (it.x < w / 2 ? cols.izq : cols.der).push(it);
+    (it.x < medio ? cols.izq : cols.der).push(it);
   }
 
   for (const lado of ["izq", "der"]) {
     const col = cols[lado];
+    if (!col.length) continue;
     col.sort((a, b) => a.y - b.y);
-    // reparte verticalmente evitando solapes y saliendo del canvas
+    // reparte verticalmente evitando solapes, dentro del area visible
     for (let i = 0; i < col.length; i++) {
-      col[i].ty = i === 0 ? col[i].y : Math.max(col[i].y, col[i - 1].ty + gap);
+      col[i].ty = i === 0 ? Math.max(col[i].y, topSafe)
+                          : Math.max(col[i].y, col[i - 1].ty + gap);
     }
-    const exceso = col.length ? col[col.length - 1].ty - (h - fs) : 0;
+    const exceso = col[col.length - 1].ty - botSafe;
     if (exceso > 0) for (const it of col) it.ty -= exceso;
-    for (const it of col) it.ty = Math.max(fs, Math.min(h - fs, it.ty));
+    for (const it of col) it.ty = Math.max(topSafe, Math.min(botSafe, it.ty));
 
     for (const it of col) {
-      const tx = lado === "izq" ? pad : w - pad - it.tw;
+      const tx = lado === "izq" ? vx0 + pad : vx1 - pad - it.tw;
       const anclaX = lado === "izq" ? tx + it.tw + 4 : tx - 4;
+      lastLabelBoxes.push({ text: it.text, tx, ty: it.ty, tw: it.tw, lado });
 
       skeletonCtx.strokeStyle = "rgba(255,255,255,0.45)";
       skeletonCtx.lineWidth = 1;
@@ -809,6 +829,8 @@ function startMode(mode) {
       const q = e.group.quaternion, eu = new THREE.Euler().setFromQuaternion(q, "XYZ");
       return { euler: { x:+eu.x.toFixed(3), y:+eu.y.toFixed(3), z:+eu.z.toFixed(3) } };
     },
+    labels() { return { cajas: lastLabelBoxes, rect: currentMediaRect, vw: window.innerWidth }; },
+    simularRect(r) { currentMediaRect = r; },
     organPos(name) {
       const e = organObjects[name];
       if (!e || !e.loaded) return null;
